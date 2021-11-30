@@ -309,7 +309,18 @@ class Dpkg:
         return message
 
     def _extract_data_archive(self, data_archive):
-        return [item for item in data_archive]
+        all_files = []
+        for item in data_archive:
+            if item.islnk() or item.isdir():
+                continue
+            
+            try:
+                blob = data_archive.extractfile(item)
+                all_files.append((item, blob))
+            except KeyError:
+                pass
+
+        return all_files
             
 
     def _process_dpkg_data_file(self, filename):
