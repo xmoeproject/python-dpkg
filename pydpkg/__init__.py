@@ -86,6 +86,7 @@ class Dpkg:
         self._control_str = None
         self._headers = None
         self._message = None
+        self._files = None
         self._upstream_version = None
         self._debian_revision = None
         self._epoch = None
@@ -136,6 +137,16 @@ class Dpkg:
         if self._message is None:
             self._message = self._process_dpkg_file(self.filename)
         return self._message
+
+    @property
+    def files(self):
+        """Return all file objects
+
+        :returns: List
+        """
+        if self._files is None:
+            self._files = self._process_dpkg_data_file(self.filename)
+        return self._files
 
     @property
     def control_str(self):
@@ -296,6 +307,38 @@ class Dpkg:
         message = message_from_string(message_body)
         self._log.debug("got control message: %s", message)
         return message
+
+    def _extract_data_archive(self, data_archive):
+        return [item for item in data_archive]
+            
+
+    def _process_dpkg_data_file(self, filename):
+        dpkg_archive = Archive(filename)
+        dpkg_archive.read_all_headers()
+        if b"control.tar.gz" in dpkg_archive.archived_files:
+            data_archive = dpkg_archive.archived_files[b"data.tar.gz"]
+            data_archive_type = "gz"
+        elif b"control.tar.xz" in dpkg_archive.archived_files:
+            data_archive = dpkg_archive.archived_files[b"data.tar.xz"]
+            data_archive_type = "xz"
+        else:
+            self._log.warn("no data")
+            return None
+
+        if data_archive_type == "gz":
+            with GzipFile(fileobj=data_archive) as gzf:
+                self._log.debug("opened gz data archive: %s", gzf)
+                with tarfile.open(fileobj=io.BytesIO(gzf.read())) as dtar:
+                    self._log.debug("opened tar file: %s", dtar)
+                    return self._extract_data_archive(dtar)
+        else:
+            with lzma.open(data_archive) as xzf:
+                self._log.debug("opened xz data archive: %s", xzf)
+                with tarfile.open(fileobj=io.BytesIO(xzf.read())) as dtar:
+                    self._log.debug("opened tar file: %s", dtar)
+                    return self._extract_data_archive(dtar)
+
+        return None
 
     def _process_dpkg_file(self, filename):
         dpkg_archive = Archive(filename)
